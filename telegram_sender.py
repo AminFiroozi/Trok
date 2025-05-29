@@ -7,12 +7,24 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+read_chats = 10
+
 # Access the variables
 api_id = os.getenv('api_id')
 api_hash = os.getenv('api_hash')
 
 # Create a unique session name
 session_name = 'my_account'
+
+def get_name(message):
+    sender = message.get_sender()
+    if hasattr(sender, 'first_name'):  # User
+        sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
+    elif hasattr(sender, 'title'):  # Channel or Group
+        sender_info = f"{sender.title}"
+    else:
+        sender_info = ""
+    return sender_info
 
 async def store_unread_messages():
     try:
@@ -30,7 +42,7 @@ async def store_unread_messages():
         
         # Get all dialogs (chats, channels, groups)
         async for dialog in client.iter_dialogs():
-            if chat_count >= 10:  # Only process top 10 chats
+            if chat_count >= read_chats:  # Only process top 10 chats
                 break
                 
             try:
@@ -48,34 +60,32 @@ async def store_unread_messages():
                     
                     if messages:
                         safe_name = "".join(c for c in dialog.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                        unread_filename = f"messages/{dialog.id}_{safe_name}_unread.txt"
+                        unread_filename = f"messages/{safe_name}.txt"
                         unread_text = str()
                         
                         for message in messages[::-1]:
                             try:
-                                msg_text = message.text if message.text else "No text content"
-                                unread_text += msg_text + "\n" + "-"*20 + "\n"
-                                print(f"\nMessage from {message.date}:")
-                                print(f"Text: {msg_text[:100]}..." if len(msg_text) > 100 else f"Text: {msg_text}")
-                                
-                                # Get sender information
-                                try:
-                                    sender = await message.get_sender()
-                                    if hasattr(sender, 'first_name'):  # User
-                                        sender_info = f"Sender: {sender.first_name} {sender.last_name if sender.last_name else ''} (@{sender.username if sender.username else 'No username'})"
-                                    elif hasattr(sender, 'title'):  # Channel or Group
-                                        sender_info = f"Sender: {sender.title}"
-                                    else:
-                                        sender_info = "Sender: Unknown"
-                                except Exception:
-                                    sender_info = "Sender: Unknown"
+                                sender = await message.get_sender()
+                                if hasattr(sender, 'first_name'):  # User
+                                    sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
+                                elif hasattr(sender, 'title'):  # Channel or Group
+                                    sender_info = f""
+                                else:
+                                    sender_info = "admin"
+                                sender_info = sender_info + " said:\n" if sender_info else ""
+                                if message.text:
+                                    msg_text = sender_info + message.text
+                                    unread_text += msg_text + "\n" + "-"*20 + "\n"
+                                # print(f"\nMessage from {message.date}:")
+                                # print(f"Text: {msg_text[:100]}..." if len(msg_text) > 100 else f"Text: {msg_text}")
                                 
                                 # Format message information
-                                message_info = f"""
-Chat: {dialog.name} (ID: {dialog.id})
-Date: {message.date}
-Message Text: {unread_text}
-"""
+                                message_info = unread_text
+#                                 message_info = f"""
+# Chat: {dialog.name} (ID: {dialog.id})
+# Date: {message.date}
+# Message Text: {unread_text}
+# """
                                 # Write to unread file
                                 with open(unread_filename, 'w', encoding='utf-8') as f:
                                     f.write(message_info)
