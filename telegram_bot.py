@@ -185,23 +185,23 @@ def format_messages(data, view_type='all'):
     if not data or 'messages' not in data:
         return "No messages found."
     
-    formatted_text = "📊 Message Statistics:\n\n"
+    formatted_text = "🎭 Telegram Messages Play\n\n"
     
     if view_type == 'all' or view_type == 'recent':
         # Format most recent messages
         if 'most_recent' in data['messages']:
-            formatted_text += "📥 Most Recent Messages:\n"
+            formatted_text += "📥 Recent Messages:\n"
             for user_id, messages in data['messages']['most_recent'].items():
-                formatted_text += f"\nMessages from {user_id}:\n"
+                formatted_text += f"\nChat with {user_id}\n"
+                formatted_text += "-------------------\n"
                 # Take only top 5 messages
                 for msg in messages[:5]:
                     # Add 3:30 hours to the timestamp
                     original_date = datetime.fromisoformat(msg['date'])
                     adjusted_date = original_date + timedelta(hours=3, minutes=30)
                     date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
-                    formatted_text += f"📅 {date_str}\n"
-                    formatted_text += f"👤 {msg['sender']}\n"
-                    formatted_text += f"💬 {msg['text']}\n"
+                    formatted_text += f"[{date_str}]\n"
+                    formatted_text += f"{msg['sender']}: {msg['text']}\n"
                     formatted_text += "-------------------\n"
     
     if view_type == 'all' or view_type == 'unread':
@@ -209,16 +209,16 @@ def format_messages(data, view_type='all'):
         if 'unread' in data['messages']:
             formatted_text += "\n📨 Unread Messages:\n"
             for user_id, messages in data['messages']['unread'].items():
-                formatted_text += f"\nMessages from {user_id}:\n"
+                formatted_text += f"\nScene: Unread Chat with {user_id}\n"
+                formatted_text += "-------------------\n"
                 # Take only top 5 messages
                 for msg in messages[:5]:
                     # Add 3:30 hours to the timestamp
                     original_date = datetime.fromisoformat(msg['date'])
                     adjusted_date = original_date + timedelta(hours=3, minutes=30)
                     date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
-                    formatted_text += f"📅 {date_str}\n"
-                    formatted_text += f"👤 {msg['sender']}\n"
-                    formatted_text += f"💬 {msg['text']}\n"
+                    formatted_text += f"[{date_str}]\n"
+                    formatted_text += f"{msg['sender']}: {msg['text']}\n"
                     formatted_text += "-------------------\n"
     
     return formatted_text
