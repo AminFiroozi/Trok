@@ -1,0 +1,1 @@
+curl -X POST http://localhost:8002/start-login -H "Content-Type: application/json" -d "{\"phone\": \"+1234567890\"}"

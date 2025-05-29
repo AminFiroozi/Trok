@@ -1,6 +1,7 @@
 LLMHackathon/
 Torob/
 messages/
+session/
 *.session
 *.session-journal
 .env

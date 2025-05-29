@@ -9,6 +9,10 @@ import json
 # Load environment variables from .env file
 load_dotenv()
 
+# Create necessary directories
+os.makedirs('sessions', exist_ok=True)
+os.makedirs('messages', exist_ok=True)
+
 # Message limits
 unread_chats_limit = 5
 unread_messages_limit = 10
@@ -25,19 +29,19 @@ specific_chat_messages_limit = 100
 api_id = os.getenv('api_id')
 api_hash = os.getenv('api_hash')
 
+if not api_id or not api_hash:
+    raise ValueError("Please set api_id and api_hash in your .env file")
+
 # Create a unique session name
 session_name = 'my_account'
-
-from telethon import TelegramClient
-import asyncio
-
-api_id = 123456  # your API ID
-api_hash = "your_api_hash"
 
 clients = {}
 code_store = {}  # Temporary storage for login codes
 
 async def initiate_login(phone):
+    # Ensure sessions directory exists
+    os.makedirs('sessions', exist_ok=True)
+    
     client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
     await client.connect()
 
@@ -55,6 +59,19 @@ async def submit_code(phone, code):
 
     try:
         await client.sign_in(phone, code)
+        return {"status": "LOGGED_IN"}
+    except Exception as e:
+        if "2FA" in str(e):
+            return {"status": "NEED_2FA", "error": "Two-step verification required"}
+        return {"error": str(e)}
+
+async def submit_2fa_password(phone, password):
+    client = clients.get(phone)
+    if not client:
+        return {"error": "No login in progress for this phone number"}
+
+    try:
+        await client.sign_in(password=password)
         return {"status": "LOGGED_IN"}
     except Exception as e:
         return {"error": str(e)}

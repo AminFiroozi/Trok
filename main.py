@@ -4,7 +4,7 @@ from typing import Optional, Dict, List
 from datetime import datetime
 import json
 import re
-from telegram_sender import submit_code, initiate_login, store_messages
+from telegram_sender import submit_code, initiate_login, store_messages, submit_2fa_password
 
 
 app = FastAPI()
@@ -37,6 +37,17 @@ class Message(BaseModel):
 
 class MessagesResponse(BaseModel):
     messages: Dict[str, Dict[str, List[Message]]]
+
+class LoginRequest(BaseModel):
+    phone: str
+
+class CodeRequest(BaseModel):
+    phone: str
+    code: str
+
+class TwoFactorRequest(BaseModel):
+    phone: str
+    password: str
 
 def remove_emoji(text: str) -> str:
     """Remove emoji characters from text"""
@@ -152,16 +163,16 @@ async def auth(phone_number: str):
         raise HTTPException(status_code=400, detail="Invalid phone number")
 
 @app.post("/start-login")
-async def start_login(request: Request):
-    data = await request.json()
-    phone = data["phone"]
-    result = await initiate_login(phone)
+async def start_login(request: LoginRequest):
+    result = await initiate_login(request.phone)
     return result
 
 @app.post("/submit-code")
-async def submit_code_route(request: Request):
-    data = await request.json()
-    phone = data["phone"]
-    code = data["code"]
-    result = await submit_code(phone, code)
+async def submit_code_route(request: CodeRequest):
+    result = await submit_code(request.phone, request.code)
+    return result
+
+@app.post("/submit-2fa")
+async def submit_2fa_route(request: TwoFactorRequest):
+    result = await submit_2fa_password(request.phone, request.password)
     return result
