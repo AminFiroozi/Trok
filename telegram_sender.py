@@ -8,6 +8,7 @@ import time
 # Load environment variables from .env file
 load_dotenv()
 
+# Message limits
 unread_chats_limit = 10
 unread_messages_limit = 100
 
@@ -16,6 +17,11 @@ latest_messages_limit = 200
 
 specific_chat_id = 423285916
 specific_chat_messages_limit = 300
+
+# Authentication variables
+phone_number = os.getenv('phone_number')  # Your phone number with country code
+verification_code = os.getenv('verification_code')  # The code sent to your phone
+password = os.getenv('password')  # Your 2FA password if enabled
 
 # Access the variables
 api_id = os.getenv('api_id')
@@ -64,8 +70,12 @@ async def store_messages(chat_id=None):
         # Initialize the client
         client = TelegramClient(session_name, api_id, api_hash)
         
-        # Start the client
-        await client.start()
+        # Start the client with authentication
+        await client.start(
+            phone=phone_number,
+            code_callback=lambda: verification_code,
+            password=password
+        )
         
         # Create messages directory if it doesn't exist
         os.makedirs('messages', exist_ok=True)
@@ -204,9 +214,8 @@ async def store_messages(chat_id=None):
 def main():
     # Run the async function to store messages
     # For specific chat:
-    # asyncio.run(store_messages(chat_id=123456789))  # Replace with actual chat ID
-    # For all chats:
     asyncio.run(store_messages(specific_chat_id))
+    # For all chats:
     # asyncio.run(store_messages())
 
 if __name__ == "__main__":
