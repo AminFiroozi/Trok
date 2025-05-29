@@ -9,10 +9,6 @@ import json
 # Load environment variables from .env file
 load_dotenv()
 
-# Create necessary directories
-os.makedirs('sessions', exist_ok=True)
-os.makedirs('messages', exist_ok=True)
-
 # Message limits
 unread_chats_limit = 5
 unread_messages_limit = 10
@@ -39,28 +35,13 @@ clients = {}
 code_store = {}  # Temporary storage for login codes
 
 async def initiate_login(phone):
-    # Ensure sessions directory exists
-    os.makedirs('sessions', exist_ok=True)
-    
-    # Clean the phone number to ensure it's in the correct format
-    phone = str(phone).strip()
-    if not phone:
-        return {"error": "Phone number cannot be empty"}
-    
-    # Create a safe session name from the phone number
-    safe_phone = "".join(c for c in phone if c.isdigit())
-    session_name = f"sessions/{safe_phone}"
-    
-    client = TelegramClient(session_name, api_id, api_hash)
+    client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
     await client.connect()
 
     if not await client.is_user_authorized():
-        try:
-            await client.send_code_request(phone)
-            clients[phone] = client
-            return {"status": "WAITING_FOR_CODE"}
-        except Exception as e:
-            return {"error": str(e)}
+        await client.send_code_request(phone)
+        clients[phone] = client
+        return {"status": "WAITING_FOR_CODE"}
 
     return {"status": "ALREADY_LOGGED_IN"}
 
@@ -73,11 +54,18 @@ async def submit_code(phone, code):
         await client.sign_in(phone, code)
         return {"status": "LOGGED_IN"}
     except Exception as e:
-        if "2FA" in str(e):
-            return {"status": "NEED_2FA", "error": "Two-step verification required"}
-        return {"error": str(e)}
+        error_msg = str(e)
+        if "password" in error_msg.lower():
+            # Store the client for password step
+            clients[phone] = client
+            return {
+                "status": "NEED_PASSWORD",
+                "message": "Two-factor authentication is enabled. Please enter your Telegram password to continue.",
+                "next_step": "Call /submit-password endpoint with your password"
+            }
+        return {"error": error_msg}
 
-async def submit_2fa_password(phone, password):
+async def submit_password(phone, password):
     client = clients.get(phone)
     if not client:
         return {"error": "No login in progress for this phone number"}
@@ -217,7 +205,7 @@ async def store_messages(chat_id=None):
                                     if message.text:
                                         message_data = {
                                             "sender": sender_info,
-                                            "message": message.text,
+                                            "text": message.text,
                                             "date": str(message.date)
                                         }
                                         messages_data["messages"]["unread"][safe_name].append(message_data)
@@ -242,8 +230,8 @@ async def store_messages(chat_id=None):
                                 sender_info = get_sender_info(message)
                                 if message.text:
                                     message_data = {
-                                        "sender": sender_info,
-                                        "message": message.text,
+                                        "name": sender_info,
+                                        "text": message.text,
                                         "date": str(message.date)
                                     }
                                     messages_data["messages"]["most_recent"][safe_name].append(message_data)

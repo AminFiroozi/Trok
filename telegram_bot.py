@@ -37,15 +37,64 @@ def get_user_state(user_id):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    login_button = types.KeyboardButton('Login')
+    login_button = types.KeyboardButton('Login', request_contact=True)
     markup.add(login_button)
-    bot.reply_to(message, "Welcome! Please login to access your messages.", reply_markup=markup)
+    bot.reply_to(message, "Welcome! Please click the Login button to share your phone number.", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == 'Login')
-def login(message):
-    bot.reply_to(message, "Please enter your phone number in international format (e.g., +989123456789)")
-    get_user_state(message.from_user.id).waiting_for_code = False
-    get_user_state(message.from_user.id).waiting_for_2fa = False
+@bot.message_handler(content_types=['contact'])
+def handle_contact(message):
+    if message.contact is not None:
+        phone = message.contact.phone_number
+        print(f"Debug - Received phone number from contact: {phone}")  # Debug log
+        
+        try:
+            # Start login process directly
+            print(f"Debug - Sending login request to {API_BASE_URL}/start-login")  # Debug log
+            login_response = requests.post(f"{API_BASE_URL}/start-login", 
+                                        json={"phone": phone})
+            print(f"Debug - Login response status: {login_response.status_code}")  # Debug log
+            print(f"Debug - Login response data: {login_response.text}")  # Debug log
+            
+            if login_response.status_code == 200:
+                try:
+                    response_data = login_response.json()
+                    if "error" in response_data:
+                        print(f"Debug - Server returned error: {response_data['error']}")  # Debug log
+                        bot.reply_to(message, f"Login failed: {response_data['error']}")
+                        return
+                    
+                    if response_data.get("status") == "ALREADY_LOGGED_IN":
+                        user_state = get_user_state(message.from_user.id)
+                        user_state.phone = phone
+                        user_state.waiting_for_code = False
+                        user_state.waiting_for_2fa = False
+                        show_main_menu(message)
+                        return
+                        
+                    user_state = get_user_state(message.from_user.id)
+                    user_state.phone = phone
+                    user_state.waiting_for_code = True
+                    user_state.code = ""  # Reset code
+                    print(f"Debug - Starting verification code input for phone: {phone}")  # Debug log
+                    bot.reply_to(
+                        message,
+                        "Please enter the verification code sent to your phone:",
+                        reply_markup=create_code_keyboard()
+                    )
+                except json.JSONDecodeError as e:
+                    print(f"Debug - Error parsing response: {str(e)}")  # Debug log
+                    bot.reply_to(message, "Error processing server response. Please try again.")
+            else:
+                try:
+                    error_data = login_response.json()
+                    error_message = error_data.get('error', 'Failed to initiate login. Please try again.')
+                except json.JSONDecodeError:
+                    error_message = 'Failed to initiate login. Please try again.'
+                print(f"Debug - Login failed: {error_message}")  # Debug log
+                bot.reply_to(message, error_message)
+        except requests.RequestException as e:
+            print(f"Debug - Error during login: {str(e)}")  # Debug log
+            bot.reply_to(message, "Connection error. Please try again later.")
 
 def create_code_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=3)
@@ -101,66 +150,81 @@ def submit_verification_code(message, code):
         response = requests.post(f"{API_BASE_URL}/submit-code",
                               json={"phone": user_state.phone, "code": code})
         print(f"Debug - Server response status: {response.status_code}")  # Debug log
-        response_data = response.json()
-        print(f"Debug - Server response data: {response_data}")  # Debug log
+        print(f"Debug - Server response data: {response.text}")  # Debug log
 
         if response.status_code == 200:
-            if response_data.get("requires_2fa") or "Two-steps verification is enabled" in str(response_data.get("error", "")):
-                user_state.waiting_for_2fa = True
-                user_state.waiting_for_code = False
-                bot.reply_to(message, "Please enter your 2FA password (you can type it directly)")
-            else:
-                user_state.waiting_for_code = False
-                show_main_menu(message)
+            try:
+                response_data = response.json()
+                if response_data.get("status") == "NEED_PASSWORD":
+                    user_state.waiting_for_2fa = True
+                    user_state.waiting_for_code = False
+                    bot.reply_to(message, response_data.get("message", "Please enter your 2FA password:"))
+                elif response_data.get("status") == "LOGGED_IN":
+                    user_state.waiting_for_code = False
+                    user_state.waiting_for_2fa = False
+                    show_main_menu(message)
+                else:
+                    user_state.waiting_for_code = False
+                    show_main_menu(message)
+            except json.JSONDecodeError as e:
+                print(f"Debug - Error parsing response: {str(e)}")  # Debug log
+                bot.reply_to(message, "Error processing server response. Please try again.")
         else:
-            print(f"Debug - Invalid code response: {response.text}")  # Debug log
-            bot.reply_to(message, "Invalid code. Please try again.")
-    except Exception as e:
+            try:
+                error_data = response.json()
+                error_message = error_data.get('error', 'Invalid code. Please try again.')
+            except json.JSONDecodeError:
+                error_message = 'Invalid code. Please try again.'
+            print(f"Debug - Invalid code response: {error_message}")  # Debug log
+            bot.reply_to(message, error_message)
+    except requests.RequestException as e:
         print(f"Debug - Error submitting code: {str(e)}")  # Debug log
-        bot.reply_to(message, f"An error occurred: {str(e)}")
+        bot.reply_to(message, "Connection error. Please try again later.")
 
-def format_messages(data):
+def format_messages(data, view_type='all'):
     if not data or 'messages' not in data:
         return "No messages found."
     
-    formatted_text = "📊 Message Statistics (Top 5):\n\n"
+    formatted_text = "📊 Message Statistics:\n\n"
     
-    # Format most recent messages
-    if 'most_recent' in data['messages']:
-        formatted_text += "📥 Most Recent Messages:\n"
-        for user_id, messages in data['messages']['most_recent'].items():
-            formatted_text += f"\nMessages from {user_id}:\n"
-            # Take only top 5 messages
-            for msg in messages[:5]:
-                # Add 3:30 hours to the timestamp
-                original_date = datetime.fromisoformat(msg['date'])
-                adjusted_date = original_date + timedelta(hours=3, minutes=30)
-                date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
-                formatted_text += f"📅 {date_str}\n"
-                formatted_text += f"👤 {msg['sender']}\n"
-                formatted_text += f"💬 {msg['text']}\n"
-                formatted_text += "-------------------\n"
+    if view_type == 'all' or view_type == 'recent':
+        # Format most recent messages
+        if 'most_recent' in data['messages']:
+            formatted_text += "📥 Most Recent Messages:\n"
+            for user_id, messages in data['messages']['most_recent'].items():
+                formatted_text += f"\nMessages from {user_id}:\n"
+                # Take only top 5 messages
+                for msg in messages[:5]:
+                    # Add 3:30 hours to the timestamp
+                    original_date = datetime.fromisoformat(msg['date'])
+                    adjusted_date = original_date + timedelta(hours=3, minutes=30)
+                    date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
+                    formatted_text += f"📅 {date_str}\n"
+                    formatted_text += f"👤 {msg['sender']}\n"
+                    formatted_text += f"💬 {msg['text']}\n"
+                    formatted_text += "-------------------\n"
     
-    # Format unread messages
-    if 'unread' in data['messages']:
-        formatted_text += "\n📨 Unread Messages:\n"
-        for user_id, messages in data['messages']['unread'].items():
-            formatted_text += f"\nMessages from {user_id}:\n"
-            # Take only top 5 messages
-            for msg in messages[:5]:
-                # Add 3:30 hours to the timestamp
-                original_date = datetime.fromisoformat(msg['date'])
-                adjusted_date = original_date + timedelta(hours=3, minutes=30)
-                date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
-                formatted_text += f"📅 {date_str}\n"
-                formatted_text += f"👤 {msg['sender']}\n"
-                formatted_text += f"💬 {msg['text']}\n"
-                formatted_text += "-------------------\n"
+    if view_type == 'all' or view_type == 'unread':
+        # Format unread messages
+        if 'unread' in data['messages']:
+            formatted_text += "\n📨 Unread Messages:\n"
+            for user_id, messages in data['messages']['unread'].items():
+                formatted_text += f"\nMessages from {user_id}:\n"
+                # Take only top 5 messages
+                for msg in messages[:5]:
+                    # Add 3:30 hours to the timestamp
+                    original_date = datetime.fromisoformat(msg['date'])
+                    adjusted_date = original_date + timedelta(hours=3, minutes=30)
+                    date_str = adjusted_date.strftime('%Y-%m-%d %H:%M:%S')
+                    formatted_text += f"📅 {date_str}\n"
+                    formatted_text += f"👤 {msg['sender']}\n"
+                    formatted_text += f"💬 {msg['text']}\n"
+                    formatted_text += "-------------------\n"
     
     return formatted_text
 
-@bot.message_handler(func=lambda message: message.text == 'View All Messages')
-def view_all_messages(message):
+@bot.message_handler(func=lambda message: message.text == 'View Recent Messages')
+def view_recent_messages(message):
     try:
         # Send typing status
         bot.send_chat_action(message.chat.id, 'typing')
@@ -170,12 +234,12 @@ def view_all_messages(message):
         
         if response.status_code == 200:
             data = response.json()
-            messages_text = format_messages(data)
+            messages_text = format_messages(data, view_type='recent')
             bot.reply_to(message, messages_text)
         else:
             bot.reply_to(message, "Failed to fetch messages. Please try again.")
     except Exception as e:
-        print(f"Debug - Error in view_all_messages: {str(e)}")  # Debug log
+        print(f"Debug - Error in view_recent_messages: {str(e)}")  # Debug log
         bot.reply_to(message, f"An error occurred: {str(e)}")
 
 @bot.message_handler(func=lambda message: message.text == 'View Unread Messages')
@@ -189,7 +253,7 @@ def view_unread_messages(message):
         
         if response.status_code == 200:
             data = response.json()
-            messages_text = format_messages(data)
+            messages_text = format_messages(data, view_type='unread')
             bot.reply_to(message, messages_text)
         else:
             bot.reply_to(message, "Failed to fetch messages. Please try again.")
@@ -203,72 +267,48 @@ def handle_message(message):
     
     # Check if user is logged in and trying to use menu commands
     if user_state.phone and not user_state.waiting_for_code and not user_state.waiting_for_2fa:
-        if message.text in ['View All Messages', 'View Unread Messages']:
+        if message.text in ['View Recent Messages', 'View Unread Messages']:
             return  # Let the specific handlers handle these commands
     
-    if not user_state.waiting_for_code and not user_state.waiting_for_2fa:
-        # Handle phone number input
-        phone = message.text.strip()
-        print(f"Debug - Received phone number: {phone}")  # Debug log
-        
-        # Validate phone number format
-        if not phone or not phone.startswith('+'):
-            bot.reply_to(message, "Please enter a valid phone number starting with + (e.g., +989123456789)")
-            return
-            
-        try:
-            # Start login process directly
-            login_response = requests.post(f"{API_BASE_URL}/start-login", 
-                                        json={"phone": phone})
-            print(f"Debug - Login response status: {login_response.status_code}")  # Debug log
-            print(f"Debug - Login response data: {login_response.text}")  # Debug log
-            
-            if login_response.status_code == 200:
-                user_state.phone = phone
-                user_state.waiting_for_code = True
-                user_state.code = ""  # Reset code
-                print(f"Debug - Starting verification code input for phone: {phone}")  # Debug log
-                bot.reply_to(
-                    message,
-                    "Please enter the verification code sent to your phone:",
-                    reply_markup=create_code_keyboard()
-                )
-            else:
-                error_data = login_response.json()
-                error_message = error_data.get('error', 'Failed to initiate login. Please try again.')
-                print(f"Debug - Login failed: {error_message}")  # Debug log
-                bot.reply_to(message, error_message)
-        except Exception as e:
-            print(f"Debug - Error during login: {str(e)}")  # Debug log
-            bot.reply_to(message, f"An error occurred: {str(e)}")
-    
-    elif user_state.waiting_for_2fa:
+    if user_state.waiting_for_2fa:
         # Handle 2FA password
         password = message.text.strip()
         print(f"Debug - Received 2FA password for phone {user_state.phone}")  # Debug log
         try:
-            response = requests.post(f"{API_BASE_URL}/submit-2fa",
+            response = requests.post(f"{API_BASE_URL}/submit-password",
                                   json={"phone": user_state.phone, "password": password})
             print(f"Debug - 2FA response status: {response.status_code}")  # Debug log
             print(f"Debug - 2FA response data: {response.text}")  # Debug log
             
             if response.status_code == 200:
-                user_state.waiting_for_2fa = False
-                show_main_menu(message)
+                try:
+                    response_data = response.json()
+                    if response_data.get("status") == "LOGGED_IN":
+                        user_state.waiting_for_2fa = False
+                        show_main_menu(message)
+                    else:
+                        error_message = response_data.get('error', 'Invalid password. Please try again.')
+                        bot.reply_to(message, error_message)
+                except json.JSONDecodeError as e:
+                    print(f"Debug - Error parsing response: {str(e)}")  # Debug log
+                    bot.reply_to(message, "Error processing server response. Please try again.")
             else:
-                error_data = response.json()
-                error_message = error_data.get('error', 'Invalid 2FA password. Please try again.')
+                try:
+                    error_data = response.json()
+                    error_message = error_data.get('error', 'Invalid 2FA password. Please try again.')
+                except json.JSONDecodeError:
+                    error_message = 'Invalid 2FA password. Please try again.'
                 print(f"Debug - Invalid 2FA password response: {error_message}")  # Debug log
                 bot.reply_to(message, error_message)
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Debug - Error submitting 2FA: {str(e)}")  # Debug log
-            bot.reply_to(message, f"An error occurred: {str(e)}")
+            bot.reply_to(message, "Connection error. Please try again later.")
 
 def show_main_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    all_messages_btn = types.KeyboardButton('View All Messages')
+    recent_messages_btn = types.KeyboardButton('View Recent Messages')
     unread_messages_btn = types.KeyboardButton('View Unread Messages')
-    markup.add(all_messages_btn, unread_messages_btn)
+    markup.add(recent_messages_btn, unread_messages_btn)
     bot.reply_to(message, "What would you like to do?", reply_markup=markup)
 
 if __name__ == "__main__":
