@@ -21,15 +21,22 @@ api_hash = os.getenv('api_hash')
 # Create a unique session name
 session_name = 'my_account'
 
-def get_name(message):
-    sender = message.get_sender()
-    if hasattr(sender, 'first_name'):  # User
-        sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
-    elif hasattr(sender, 'title'):  # Channel or Group
-        sender_info = f"{sender.title}"
-    else:
-        sender_info = ""
-    return sender_info
+def get_sender_info(message):
+    """Fast method to get sender information"""
+    sender = message.sender
+    if not sender:
+        return ""
+        
+    # Get basic info without additional API calls
+    info = []
+    if sender.first_name:
+        info.append(sender.first_name)
+    if sender.last_name:
+        info.append(sender.last_name)
+    if sender.username:
+        info.append(f"(@{sender.username})")
+        
+    return " ".join(info)
 
 def format_time(seconds):
     """Format seconds into a human-readable string"""
@@ -66,12 +73,10 @@ async def store_messages():
                 break
                 
             try:
-                # Skip groups
-                if dialog.is_group:
-                    print(f"\nSkipping group: {dialog.name}")
+                # Skip non-private chats and bots
+                if not dialog.is_user or (hasattr(dialog.entity, 'bot') and dialog.entity.bot):
                     continue
                     
-                print(f"\nProcessing {dialog.name}:")
                 safe_name = "".join(c for c in dialog.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 
                 # Process unread messages
@@ -90,16 +95,9 @@ async def store_messages():
                         
                         for message in unread_messages[::-1]:
                             try:
-                                sender = await message.get_sender()
-                                if hasattr(sender, 'first_name'):  # User
-                                    sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
-                                elif hasattr(sender, 'title'):  # Channel or Group
-                                    sender_info = f""
-                                else:
-                                    sender_info = "admin"
-                                sender_info = sender_info + " said:\n" if sender_info else ""
+                                sender_info = get_sender_info(message)
                                 if message.text:
-                                    msg_text = sender_info + message.text + "\n\n" + str(message.date)
+                                    msg_text = f"{sender_info}: {message.text}\n\n{message.date}"
                                     unread_text += msg_text + "\n" + "-"*20 + "\n"
                                 
                                 # Write to unread file
@@ -123,19 +121,9 @@ async def store_messages():
                     
                     for message in latest_messages[::-1]:
                         try:
-                            sender = await message.get_sender()
-                            if hasattr(sender, 'first_name'):  # User
-                                sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
-                            elif hasattr(sender, 'title'):  # Channel or Group
-                                sender_info = f""
-                            else:
-                                sender_info = "admin"
-                            sender_info = sender_info + " said:\n" if sender_info else ""
-                            sender_info = ""
-                            
-                            
+                            sender_info = get_sender_info(message)
                             if message.text:
-                                msg_text = sender_info + message.text + "\n\n" + str(message.date)
+                                msg_text = f"{sender_info}: {message.text}\n\n{message.date}"
                                 read_text += msg_text + "\n" + "-"*20 + "\n"
                             
                             # Write to read file
