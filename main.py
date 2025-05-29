@@ -136,7 +136,7 @@ async def read_user(user_id: int):
                 msg = json.loads(msg)
             message_objects.append(Message(
                 sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
-                text=remove_emoji(msg.get("text", msg.get("message", ""))),
+                text=remove_emoji(msg.get("messag", msg.get("message", ""))),
                 date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
             ))
         except Exception as e:

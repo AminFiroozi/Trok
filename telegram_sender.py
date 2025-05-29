@@ -42,13 +42,25 @@ async def initiate_login(phone):
     # Ensure sessions directory exists
     os.makedirs('sessions', exist_ok=True)
     
-    client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
+    # Clean the phone number to ensure it's in the correct format
+    phone = str(phone).strip()
+    if not phone:
+        return {"error": "Phone number cannot be empty"}
+    
+    # Create a safe session name from the phone number
+    safe_phone = "".join(c for c in phone if c.isdigit())
+    session_name = f"sessions/{safe_phone}"
+    
+    client = TelegramClient(session_name, api_id, api_hash)
     await client.connect()
 
     if not await client.is_user_authorized():
-        await client.send_code_request(phone)
-        clients[phone] = client
-        return {"status": "WAITING_FOR_CODE"}
+        try:
+            await client.send_code_request(phone)
+            clients[phone] = client
+            return {"status": "WAITING_FOR_CODE"}
+        except Exception as e:
+            return {"error": str(e)}
 
     return {"status": "ALREADY_LOGGED_IN"}
 
@@ -205,7 +217,7 @@ async def store_messages(chat_id=None):
                                     if message.text:
                                         message_data = {
                                             "sender": sender_info,
-                                            "text": message.text,
+                                            "message": message.text,
                                             "date": str(message.date)
                                         }
                                         messages_data["messages"]["unread"][safe_name].append(message_data)
@@ -230,8 +242,8 @@ async def store_messages(chat_id=None):
                                 sender_info = get_sender_info(message)
                                 if message.text:
                                     message_data = {
-                                        "name": sender_info,
-                                        "text": message.text,
+                                        "sender": sender_info,
+                                        "message": message.text,
                                         "date": str(message.date)
                                     }
                                     messages_data["messages"]["most_recent"][safe_name].append(message_data)
