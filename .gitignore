@@ -1,0 +1,7 @@
+LLMHackathon/
+Torob/
+*.session
+*.session-journal
+.env
+*.pptx
+channels_messages.txt
