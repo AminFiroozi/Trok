@@ -7,7 +7,11 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-read_chats = 10
+unread_chats_limit = 10
+unread_messages_limit = 100
+
+latest_chats_limit = 10
+latest_messages_limit = 200
 
 # Access the variables
 api_id = os.getenv('api_id')
@@ -26,7 +30,7 @@ def get_name(message):
         sender_info = ""
     return sender_info
 
-async def store_unread_messages():
+async def store_messages():
     try:
         # Initialize the client
         client = TelegramClient(session_name, api_id, api_hash)
@@ -34,36 +38,42 @@ async def store_unread_messages():
         # Start the client
         await client.start()
         
-        # Create messages directory if it doesn't exist
-        os.makedirs('messages', exist_ok=True)
+        # Create messages directories if they don't exist
+        os.makedirs('messages/unread', exist_ok=True)
+        os.makedirs('messages/read', exist_ok=True)
         
         # Counter for top chats
         chat_count = 0
         
         # Get all dialogs (chats, channels, groups)
         async for dialog in client.iter_dialogs():
-            if chat_count >= read_chats:  # Only process top 10 chats
+            if chat_count >= max(unread_chats_limit, latest_chats_limit):  # Process enough chats for both operations
                 break
                 
             try:
+                # Skip groups
+                if dialog.is_group:
+                    print(f"\nSkipping group: {dialog.name}")
+                    continue
+                    
                 print(f"\nProcessing {dialog.name}:")
+                safe_name = "".join(c for c in dialog.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 
-                # Check if there are unread messages
+                # Process unread messages
                 if dialog.unread_count > 0:
                     print(f"Found {dialog.unread_count} unread messages")
                     
-                    # Get messages
-                    messages = await client.get_messages(
+                    # Get unread messages
+                    unread_messages = await client.get_messages(
                         dialog.id,
-                        limit=min(dialog.unread_count, 100)  # Get only unread messages
+                        limit=min(dialog.unread_count, unread_messages_limit)  # Get only unread messages
                     )
                     
-                    if messages:
-                        safe_name = "".join(c for c in dialog.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                        unread_filename = f"messages/{safe_name}.txt"
+                    if unread_messages:
+                        unread_filename = f"messages/unread/{safe_name}.txt"
                         unread_text = str()
                         
-                        for message in messages[::-1]:
+                        for message in unread_messages[::-1]:
                             try:
                                 sender = await message.get_sender()
                                 if hasattr(sender, 'first_name'):  # User
@@ -74,30 +84,50 @@ async def store_unread_messages():
                                     sender_info = "admin"
                                 sender_info = sender_info + " said:\n" if sender_info else ""
                                 if message.text:
-                                    msg_text = sender_info + message.text
+                                    msg_text = sender_info + message.text + "\n\n" + str(message.date)
                                     unread_text += msg_text + "\n" + "-"*20 + "\n"
-                                # print(f"\nMessage from {message.date}:")
-                                # print(f"Text: {msg_text[:100]}..." if len(msg_text) > 100 else f"Text: {msg_text}")
                                 
-                                # Format message information
-                                message_info = unread_text
-#                                 message_info = f"""
-# Chat: {dialog.name} (ID: {dialog.id})
-# Date: {message.date}
-# Message Text: {unread_text}
-# """
                                 # Write to unread file
                                 with open(unread_filename, 'w', encoding='utf-8') as f:
-                                    f.write(message_info)
+                                    f.write(unread_text)
                             except Exception as e:
-                                print(f"Error processing message in {dialog.name}: {str(e)}")
+                                print(f"Error processing unread message in {dialog.name}: {str(e)}")
                                 continue
                         
-                        print(f"Stored {len(messages)} messages from {dialog.name} in {unread_filename}")
-                    else:
-                        print(f"No messages found in {dialog.name}")
-                else:
-                    print(f"No unread messages in {dialog.name}")
+                        print(f"Stored {len(unread_messages)} unread messages from {dialog.name} in {unread_filename}")
+                
+                # Process latest messages
+                latest_messages = await client.get_messages(
+                    dialog.id,
+                    limit=latest_messages_limit  # Get latest messages
+                )
+                
+                if latest_messages:
+                    read_filename = f"messages/read/{safe_name}.txt"
+                    read_text = str()
+                    
+                    for message in latest_messages[::-1]:
+                        try:
+                            sender = await message.get_sender()
+                            if hasattr(sender, 'first_name'):  # User
+                                sender_info = f"{sender.first_name} {sender.last_name if sender.last_name else ''}"
+                            elif hasattr(sender, 'title'):  # Channel or Group
+                                sender_info = f""
+                            else:
+                                sender_info = "admin"
+                            sender_info = sender_info + " said:\n" if sender_info else ""
+                            if message.text:
+                                msg_text = sender_info + message.text + " at " + str(message.date)
+                                read_text += msg_text + "\n" + "-"*20 + "\n"
+                            
+                            # Write to read file
+                            with open(read_filename, 'w', encoding='utf-8') as f:
+                                f.write(read_text)
+                        except Exception as e:
+                            print(f"Error processing latest message in {dialog.name}: {str(e)}")
+                            continue
+                    
+                    print(f"Stored {len(latest_messages)} latest messages from {dialog.name} in {read_filename}")
                 
                 chat_count += 1  # Increment chat counter
                     
@@ -107,7 +137,7 @@ async def store_unread_messages():
         
         # Disconnect the client
         await client.disconnect()
-        print("\nAll unread messages have been stored in separate files")
+        print("\nAll messages have been stored in separate files")
         
     except Exception as e:
         print(f"An error occurred: {str(e)}")
@@ -117,8 +147,8 @@ async def store_unread_messages():
             await client.disconnect()
 
 def main():
-    # Run the async function to store unread messages
-    asyncio.run(store_unread_messages())
+    # Run the async function to store messages
+    asyncio.run(store_messages())
 
 if __name__ == "__main__":
     main()
