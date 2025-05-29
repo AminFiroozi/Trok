@@ -1,0 +1,13 @@
+
+📨 Last Message Information:
+Chat: V2ray VPN (ID: -1001389758759)
+Sender: V2ray VPN
+Message ID: 17336
+Date: 2025-05-29 10:32:49+00:00
+Edit Date: Not edited
+Message Type: Text
+Message Text: ✅ اختصاصی کانال 🔱
+`trojan://telegram-id-directvpn@13.39.228.102:22223?security=tls&alpn=http/1.1&headerType=none&type=tcp&sni=trojan.burgerip.co.uk#OurChannel : @DirectVPN
+`🚀 @DirectVPN ✴️
+Views: 1
+Forwards: 0
