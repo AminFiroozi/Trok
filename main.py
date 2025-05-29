@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, List
 from datetime import datetime
 import json
+import re
 from telegram_sender import submit_code, initiate_login, store_messages
 
 
@@ -37,6 +38,18 @@ class Message(BaseModel):
 class MessagesResponse(BaseModel):
     messages: Dict[str, Dict[str, List[Message]]]
 
+def remove_emoji(text: str) -> str:
+    """Remove emoji characters from text"""
+    emoji_pattern = re.compile("["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        "]+", flags=re.UNICODE)
+    return emoji_pattern.sub('', text)
+
 @app.get("/users", response_model=MessagesResponse)
 async def read_users():
     """Return all users' messages categorized by most recent and unread"""
@@ -55,8 +68,8 @@ async def read_users():
                 if isinstance(msg, str):
                     msg = json.loads(msg)
                 message_objects.append(Message(
-                    sender=msg.get("name", msg.get("sender", "")),
-                    text=msg.get("text", msg.get("message", "")),
+                    sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
+                    text=remove_emoji(msg.get("text", msg.get("message", ""))),
                     date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
                 ))
             except Exception as e:
@@ -75,8 +88,8 @@ async def read_users():
                 if isinstance(msg, str):
                     msg = json.loads(msg)
                 message_objects.append(Message(
-                    sender=msg.get("name", msg.get("sender", "")),
-                    text=msg.get("text", msg.get("message", "")),
+                    sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
+                    text=remove_emoji(msg.get("text", msg.get("message", ""))),
                     date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
                 ))
             except Exception as e:
@@ -111,8 +124,8 @@ async def read_user(user_id: int):
             if isinstance(msg, str):
                 msg = json.loads(msg)
             message_objects.append(Message(
-                sender=msg.get("name", msg.get("sender", "")),
-                text=msg.get("text", msg.get("message", "")),
+                sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
+                text=remove_emoji(msg.get("text", msg.get("message", ""))),
                 date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
             ))
         except Exception as e:
