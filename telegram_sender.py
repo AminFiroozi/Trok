@@ -3,6 +3,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+import time
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,7 +31,21 @@ def get_name(message):
         sender_info = ""
     return sender_info
 
+def format_time(seconds):
+    """Format seconds into a human-readable string"""
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.2f} minutes"
+    else:
+        hours = seconds / 3600
+        return f"{hours:.2f} hours"
+
 async def store_messages():
+    start_time = time.time()
+    print(f"Starting message collection at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
     try:
         # Initialize the client
         client = TelegramClient(session_name, api_id, api_hash)
@@ -116,8 +131,11 @@ async def store_messages():
                             else:
                                 sender_info = "admin"
                             sender_info = sender_info + " said:\n" if sender_info else ""
+                            sender_info = ""
+                            
+                            
                             if message.text:
-                                msg_text = sender_info + message.text + " at " + str(message.date)
+                                msg_text = sender_info + message.text + "\n\n" + str(message.date)
                                 read_text += msg_text + "\n" + "-"*20 + "\n"
                             
                             # Write to read file
@@ -137,7 +155,13 @@ async def store_messages():
         
         # Disconnect the client
         await client.disconnect()
-        print("\nAll messages have been stored in separate files")
+        
+        # Calculate and display total time
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"\nProcess completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Total execution time: {format_time(total_time)}")
+        print("All messages have been stored in separate files")
         
     except Exception as e:
         print(f"An error occurred: {str(e)}")
