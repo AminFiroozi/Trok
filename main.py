@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 import json
 import re
@@ -50,63 +50,11 @@ def remove_emoji(text: str) -> str:
         "]+", flags=re.UNICODE)
     return emoji_pattern.sub('', text)
 
-@app.get("/users", response_model=MessagesResponse)
+@app.get("/users")
 async def read_users():
-    """Return all users' messages categorized by most recent and unread"""
-    most_recent = {}
-    unread = {}
+    """Return raw messages data from store_messages"""
     messages_data = await store_messages()
-    
-    # print("Raw messages_data:", messages_data)  # Debug print
-    
-    # Process most recent messages
-    for user_id, messages in messages_data.get("messages", {}).get("most_recent", {}).items():
-        # print(f"Processing most recent messages for user {user_id}:", messages)  # Debug print
-        message_objects = []
-        for msg in messages:
-            try:
-                if isinstance(msg, str):
-                    msg = json.loads(msg)
-                message_objects.append(Message(
-                    sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
-                    text=remove_emoji(msg.get("text", msg.get("message", ""))),
-                    date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
-                ))
-            except Exception as e:
-                print(f"Error processing message for user {user_id}: {str(e)}")
-                continue
-        
-        if message_objects:
-            most_recent[user_id] = message_objects
-    
-    # Process unread messages
-    for user_id, messages in messages_data.get("messages", {}).get("unread", {}).items():
-        # print(f"Processing unread messages for user {user_id}:", messages)  # Debug print
-        message_objects = []
-        for msg in messages:
-            try:
-                if isinstance(msg, str):
-                    msg = json.loads(msg)
-                message_objects.append(Message(
-                    sender=remove_emoji(msg.get("name", msg.get("sender", ""))),
-                    text=remove_emoji(msg.get("text", msg.get("message", ""))),
-                    date=datetime.fromisoformat(msg.get("date", datetime.now().isoformat()))
-                ))
-            except Exception as e:
-                print(f"Error processing message for user {user_id}: {str(e)}")
-                continue
-        
-        if message_objects:
-            unread[user_id] = message_objects
-    
-    # Sort messages by date
-    for user_id in most_recent:
-        most_recent[user_id] = sorted(most_recent[user_id], key=lambda x: x.date, reverse=True)
-    
-    return MessagesResponse(messages={
-        "most_recent": most_recent,
-        "unread": unread
-    })
+    return messages_data
 
 @app.get("/users/{user_id}", response_model=List[Message])
 async def read_user(user_id: int):
