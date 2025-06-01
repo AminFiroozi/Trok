@@ -1,1 +1,1 @@
-# LLMAgentHackathon
+# Trok; Grok for Telegram
