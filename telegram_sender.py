@@ -16,9 +16,9 @@ unread_messages_limit = 10
 latest_chats_limit = 2
 latest_messages_limit = 10
 
-# specific_chat_id = None
+specific_chat_id = None
 # specific_chat_id = 423285916
-specific_chat_id = 6836049135
+# specific_chat_id = 6836049135
 specific_chat_messages_limit = 100
 
 # Access the variables
@@ -28,51 +28,63 @@ api_hash = os.getenv('api_hash')
 if not api_id or not api_hash:
     raise ValueError("Please set api_id and api_hash in your .env file")
 
-# Create a unique session name
-session_name = 'my_account'
+# Create sessions directory if it doesn't exist
+os.makedirs('sessions', exist_ok=True)
 
+# Store active clients
 clients = {}
-code_store = {}  # Temporary storage for login codes
+
+async def get_client(phone):
+    """Get or create a client for the given phone number"""
+    if phone not in clients:
+        session_name = f"sessions/{phone}"
+        client = TelegramClient(session_name, api_id, api_hash)
+        await client.connect()
+        clients[phone] = client
+    return clients[phone]
 
 async def initiate_login(phone):
-    client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
-    await client.connect()
-
-    if not await client.is_user_authorized():
+    """Start the login process for a phone number"""
+    try:
+        client = await get_client(phone)
+        
+        if await client.is_user_authorized():
+            return {"status": "ALREADY_LOGGED_IN"}
+        
         await client.send_code_request(phone)
-        clients[phone] = client
         return {"status": "WAITING_FOR_CODE"}
-
-    return {"status": "ALREADY_LOGGED_IN"}
+    except Exception as e:
+        return {"error": str(e)}
 
 async def submit_code(phone, code):
-    client = clients.get(phone)
-    if not client:
-        return {"error": "No login in progress for this phone number"}
-
+    """Submit the verification code"""
     try:
-        await client.sign_in(phone, code)
-        return {"status": "LOGGED_IN"}
+        client = await get_client(phone)
+        
+        try:
+            await client.sign_in(phone, code)
+            return {"status": "LOGGED_IN"}
+        except Exception as e:
+            error_msg = str(e)
+            if "password" in error_msg.lower():
+                return {
+                    "status": "NEED_PASSWORD",
+                    "message": "Two-factor authentication is enabled. Please enter your Telegram password."
+                }
+            return {"error": error_msg}
     except Exception as e:
-        error_msg = str(e)
-        if "password" in error_msg.lower():
-            # Store the client for password step
-            clients[phone] = client
-            return {
-                "status": "NEED_PASSWORD",
-                "message": "Two-factor authentication is enabled. Please enter your Telegram password to continue.",
-                "next_step": "Call /submit-password endpoint with your password"
-            }
-        return {"error": error_msg}
+        return {"error": str(e)}
 
 async def submit_password(phone, password):
-    client = clients.get(phone)
-    if not client:
-        return {"error": "No login in progress for this phone number"}
-
+    """Submit the 2FA password"""
     try:
-        await client.sign_in(password=password)
-        return {"status": "LOGGED_IN"}
+        client = await get_client(phone)
+        
+        try:
+            await client.sign_in(password=password)
+            return {"status": "LOGGED_IN"}
+        except Exception as e:
+            return {"error": str(e)}
     except Exception as e:
         return {"error": str(e)}
 
@@ -112,6 +124,7 @@ async def store_messages(chat_id=None):
     
     try:
         # Initialize the client
+        session_name = "+989164911318"
         client = TelegramClient(session_name, api_id, api_hash)
         
         # Start the client

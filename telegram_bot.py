@@ -4,8 +4,10 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
+import time
+from LLM_API_Context import get_LLM_response 
 from dotenv import load_dotenv
-
+# from LLM import query_chat_messages
 # Load environment variables
 load_dotenv()
 
@@ -34,6 +36,27 @@ def get_user_state(user_id):
         user_states[user_id] = UserState()
     return user_states[user_id]
 
+@bot.message_handler(func=lambda message: message.text != "")
+def get_messages(message):
+    start_time = time.time()
+    bot.send_chat_action(message.chat.id, 'typing')
+    
+    message_text = message.text
+    response = requests.get(f"{API_BASE_URL}/users")
+    print(f"Debug - Response status in LLM call: {response.status_code}")  # Debug log
+        
+    if response.status_code == 200:
+        data = response.json()
+        data_formatted = format_messages(data)
+        llm_response = get_LLM_response(data_formatted, message_text)
+        # llm_response = query_chat_messages(message_text, data)
+        processing_time = time.time() - start_time
+        bot.reply_to(message, f"{llm_response}\n\n⏱️ Time: {processing_time:.2f}s")
+    else:
+        processing_time = time.time() - start_time
+        bot.reply_to(message, f"Failed to fetch messages. Please try again.\n\n⏱️ Time: {processing_time:.2f}s")
+
+        
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -254,12 +277,33 @@ def view_unread_messages(message):
         if response.status_code == 200:
             data = response.json()
             messages_text = format_messages(data, view_type='unread')
+            print(messages_text)
             bot.reply_to(message, messages_text)
         else:
             bot.reply_to(message, "Failed to fetch messages. Please try again.")
     except Exception as e:
         print(f"Debug - Error in view_unread_messages: {str(e)}")  # Debug log
         bot.reply_to(message, f"An error occurred: {str(e)}")
+
+
+@bot.message_handler(commands=['ask'])
+def get_messages(message):
+    message_text = message.text
+    response = requests.get(f"{API_BASE_URL}/users")
+    print(f"Debug - Response status in LLM call: {response.status_code}")  # Debug log
+        
+    if response.status_code == 200:
+        data = response.json()
+        print(data)
+        # llm_response = query_chat_messages(message_text, data)
+        print("#"*50)
+        print(llm_response)
+        print("#"*50)
+        
+        bot.reply_to(message, llm_response)
+    else:
+        bot.reply_to(message, "Failed to fetch messages. Please try again.")
+
 
 @bot.message_handler(func=lambda message: not message.text.startswith('/'))
 def handle_message(message):
@@ -311,6 +355,8 @@ def show_main_menu(message):
     markup.add(recent_messages_btn, unread_messages_btn)
     bot.reply_to(message, "What would you like to do?", reply_markup=markup)
 
+
+
 if __name__ == "__main__":
     print("Starting Telegram bot...")
-    bot.polling(none_stop=True) 
+    bot.polling(none_stop=True)
