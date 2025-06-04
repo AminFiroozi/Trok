@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta
 import os
 import time
+import threading
 from LLM_API_Context import get_LLM_response 
 from dotenv import load_dotenv
 # from LLM import query_chat_messages
@@ -36,25 +37,37 @@ def get_user_state(user_id):
         user_states[user_id] = UserState()
     return user_states[user_id]
 
+def keep_typing(chat_id, stop_event):
+    """Keep sending typing action until stop_event is set"""
+    while not stop_event.is_set():
+        bot.send_chat_action(chat_id, 'typing')
+        time.sleep(3)  # Send typing action every 3 seconds
+
 @bot.message_handler(func=lambda message: message.text != "")
 def get_messages(message):
     start_time = time.time()
-    bot.send_chat_action(message.chat.id, 'typing')
+    stop_typing = threading.Event()
+    typing_thread = threading.Thread(target=keep_typing, args=(message.chat.id, stop_typing))
+    typing_thread.start()
     
-    message_text = message.text
-    response = requests.get(f"{API_BASE_URL}/users")
-    print(f"Debug - Response status in LLM call: {response.status_code}")  # Debug log
-        
-    if response.status_code == 200:
-        data = response.json()
-        data_formatted = format_messages(data)
-        llm_response = get_LLM_response(data_formatted, message_text)
-        # llm_response = query_chat_messages(message_text, data)
-        processing_time = time.time() - start_time
-        bot.reply_to(message, f"{llm_response}\n\n⏱️ Time: {processing_time:.2f}s")
-    else:
-        processing_time = time.time() - start_time
-        bot.reply_to(message, f"Failed to fetch messages. Please try again.\n\n⏱️ Time: {processing_time:.2f}s")
+    try:
+        message_text = message.text
+        response = requests.get(f"{API_BASE_URL}/users")
+        print(f"Debug - Response status in LLM call: {response.status_code}")  # Debug log
+            
+        if response.status_code == 200:
+            data = response.json()
+            data_formatted = format_messages(data, "recent")
+            llm_response = get_LLM_response(data_formatted, message_text)
+            # llm_response = query_chat_messages(message_text, data)
+            processing_time = time.time() - start_time
+            bot.reply_to(message, f"{llm_response}\n\n⏱️ Time: {processing_time:.2f}s")
+        else:
+            processing_time = time.time() - start_time
+            bot.reply_to(message, f"Failed to fetch messages. Please try again.\n\n⏱️ Time: {processing_time:.2f}s")
+    finally:
+        stop_typing.set()  # Stop the typing indicator
+        typing_thread.join()  # Wait for the typing thread to finish
 
         
 @bot.message_handler(commands=['start'])
@@ -208,7 +221,7 @@ def format_messages(data, view_type='all'):
     if not data or 'messages' not in data:
         return "No messages found."
     
-    formatted_text = "🎭 Telegram Messages Play\n\n"
+    formatted_text = ""
     
     if view_type == 'all' or view_type == 'recent':
         # Format most recent messages

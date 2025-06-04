@@ -13,8 +13,8 @@ load_dotenv()
 unread_chats_limit = 5
 unread_messages_limit = 10
 
-latest_chats_limit = 2
-latest_messages_limit = 10
+latest_chats_limit = 30
+latest_messages_limit = 1000
 
 specific_chat_id = None
 # specific_chat_id = 423285916

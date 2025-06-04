@@ -55,9 +55,8 @@ def get_LLM_response(direct_context, user_query):
     --- BEGIN PROVIDED TEXT ---
     {direct_context}
     --- END PROVIDED TEXT ---
-    
-    In the answer don't mention any character like " or \\" or \\n or text 
-    answer normally and not in the format of text: "<answer>\\n"
+    In above context, there are few conversations between people and the person who is asking question is -Nicholas and others are the people who he chats with, in each message it is specified who is saying a sentence, each message is separated from others with some dashes (-) and the start of a new chat is declared with Chat with <Somebody>
+    before the name of the sender of the message, the date and time of sending that message is shown, answer the users question carefully according to these chats and the sender and time of each message and where that message has been sent
     And answer the following question with the information provided in the text above:
     Question: {user_query}
 
@@ -76,11 +75,11 @@ def get_LLM_response(direct_context, user_query):
 
     # --- 3. Interact with Gemini Generative Model ---
     # We'll use Gemini 1.5 Flash, which has a large context window.
-    generative_model_name = 'gemini-1.5-flash-latest'
+    generative_model_name = "gemini-2.0-flash"
+    # generative_model_name = 'gemini-1.5-flash-latest'
     print(f"\nUsing Gemini generative model: {generative_model_name}")
     try:
         model = genai.GenerativeModel(generative_model_name)
-
 
         # Generate content
         # You can also use generate_content_async for asynchronous calls
@@ -89,7 +88,7 @@ def get_LLM_response(direct_context, user_query):
         # --- 4. Print the Response ---
         print("\n--- Gemini's Response ---")
         if response.parts:
-            print(response.text, type(response.text))
+            print(response.text)
             return response.text
             # return str(response.parts).split("\"")[1][:-2]
         elif response.candidates and response.candidates[0].finish_reason != "SAFETY":
